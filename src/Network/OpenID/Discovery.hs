@@ -34,7 +34,8 @@ type M = ExceptionT Error
 
 -- | Attempt to resolve an OpenID endpoint, and user identifier.
 discover :: Monad m
-         => Resolver m -> Identifier -> m (Either Error (Provider,Identifier))
+         => Resolver m -> Identifier
+         -> m (Either Error (Provider,Identifier,IdentifierType))
 discover resolve ident = do
   res <- runExceptionT (discoverYADIS resolve ident Nothing)
   case res of
@@ -48,7 +49,7 @@ discover resolve ident = do
 --   an OpenID endpoint, and the actual identifier for the user.
 discoverYADIS :: Monad m
               => Resolver m -> Identifier -> Maybe String
-              -> M m (Provider,Identifier)
+              -> M m (Provider,Identifier,IdentifierType)
 discoverYADIS resolve ident mb_loc = do
   let err = raise . Error
       uri = fromMaybe (getIdentifier ident) mb_loc
@@ -76,7 +77,7 @@ discoverYADIS resolve ident mb_loc = do
 -- | Parse out an OpenID endpoint, and actual identifier from a YADIS xml
 -- document.
 parseYADIS :: ExceptionM m Error
-           => Identifier -> XRDS -> m (Provider,Identifier)
+           => Identifier -> XRDS -> m (Provider,Identifier,IdentifierType)
 parseYADIS ident = handleError . listToMaybe . mapMaybe isOpenId . concat
   where
   handleError = maybe e return
@@ -86,15 +87,15 @@ parseYADIS ident = handleError . listToMaybe . mapMaybe isOpenId . concat
         localId = maybe ident Identifier $ listToMaybe $ serviceLocalIDs svc
         f (x,y) | x `elem` tys = Just y
                 | otherwise    = mzero
-    lid <- listToMaybe $ mapMaybe f
-      [ ("http://specs.openid.net/auth/2.0/server", ident)
+    (lid,itype) <- listToMaybe $ mapMaybe f
+      [ ("http://specs.openid.net/auth/2.0/server", (ident, OPIdentifier))
       -- claimed identifiers
-      , ("http://specs.openid.net/auth/2.0/signon", localId)
-      , ("http://openid.net/signon/1.0"           , localId)
-      , ("http://openid.net/signon/1.1"           , localId)
+      , ("http://specs.openid.net/auth/2.0/signon", (localId, ClaimedIdentifier))
+      , ("http://openid.net/signon/1.0"           , (localId, ClaimedIdentifier))
+      , ("http://openid.net/signon/1.1"           , (localId, ClaimedIdentifier))
       ]
     uri <- parseProvider =<< listToMaybe (serviceURIs svc)
-    return (uri,lid)
+    return (uri,lid,itype)
 
 
 -- HTML-Based Discovery --------------------------------------------------------
@@ -102,7 +103,7 @@ parseYADIS ident = handleError . listToMaybe . mapMaybe isOpenId . concat
 -- | Attempt to discover an OpenID endpoint, from an HTML document.  The result
 -- will be an endpoint on success, and the actual identifier of the user.
 discoverHTML :: Monad m
-             => Resolver m -> Identifier -> M m (Provider,Identifier)
+             => Resolver m -> Identifier -> M m (Provider,Identifier,IdentifierType)
 discoverHTML resolve ident = do
   let err = raise . Error
   case parseURI (getIdentifier ident) of
@@ -124,7 +125,7 @@ discoverHTML resolve ident = do
 
 -- | Parse out an OpenID endpoint and an actual identifier from an HTML
 -- document.
-parseHTML :: Identifier -> String -> Maybe (Provider,Identifier)
+parseHTML :: Identifier -> String -> Maybe (Provider,Identifier,IdentifierType)
 parseHTML ident = resolve
                 . filter isOpenId
                 . linkTags
@@ -134,7 +135,7 @@ parseHTML ident = resolve
     resolve ls = do
       prov <- parseProvider =<< lookup "openid2.provider" ls
       let lid = maybe ident Identifier $ lookup "openid2.local_id" ls
-      return (prov,lid)
+      return (prov,lid,ClaimedIdentifier)
 
 
 -- | Filter out link tags from a list of html tags.

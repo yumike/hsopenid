@@ -24,6 +24,7 @@ module Network.OpenID.Types (
   , providerURI
   , modifyProvider
   , Identifier(..)
+  , IdentifierType(..)
   , Error(..)
   , assocString
   ) where
@@ -112,6 +113,10 @@ modifyProvider f (Provider uri) = Provider (f uri)
 
 -- | A valid OpenID identifier.
 newtype Identifier = Identifier { getIdentifier :: String }
+  deriving (Eq,Show,Read)
+
+
+data IdentifierType = OPIdentifier | ClaimedIdentifier
   deriving (Eq,Show,Read)
 
 -- | Errors
